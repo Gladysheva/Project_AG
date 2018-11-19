@@ -1,0 +1,239 @@
+---
+title: "Home assignment"
+author: "Anna Gladysheva"
+date: '19 ноября 2018 г '
+output: 
+ html_document:
+   keep_md: no
+   number_sections: yes
+   toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+```
+
+# Установка пакетов
+
+```{r, echo = TRUE}
+library(tidyverse) # манипуляции с данными
+library(rio) # импорт разных форматов
+#install.packages("skimr")
+library(skimr) # описательные статистики
+library(lattice)
+#install.packages("DataExplorer")
+library(DataExplorer)
+library(tidyverse) # обработка данных, графики...
+library(vcd) # мозаичные графики для качественных переменных
+#library(ggalluvial) # потоковые ???? графики для качественных переменных
+#install.packages("corrplot")
+library(corrplot) # визуализация корреляций
+#install.packages("latex2exp")
+library(latex2exp) # формулы в подписях к графику
+
+#devtools::install_github("thomasp85/patchwork")
+library(patchwork) # удобное расположение графиков рядом
+
+library(lmtest) # диагностика линейных моделей
+library(sjstats) # удобные мелкие функции для работы с моделями
+library(sjPlot) # ещё больше графиков
+library(fmsb)
+library(sandwich) # оценка Var для гетероскедастичности
+#install.packages("stargazer")
+library(stargazer) # красивые таблички в html, tex
+library(texreg) # и снова красивые таблички в html, tex :)
+#install.packages("estimatr")
+library(estimatr) # модели с робастными ошибками
+```
+
+# Импорт данных
+
+Данные по стоимости квартир и различных их характеристик для двухкомнатных квартир, расположенных в ЗАО, ЮВАО и ЮАО Москвы в 2013 году. 
+Источник данных - [ЦИАН](https://www.cian.ru/kupit/)
+
+```{r}
+#data_ag = import("C:\\Users\\ANN\\Dropbox\\R_intro_3\\apartmentsAG.dta")
+setwd("C:/Users/ANN/Dropbox/R_intro_3/HW_AG/")
+data_ag = import("apartmentsAG.dta")
+```
+- totsp	-- общая площадь квартиры, кв.м.
+- livesp	-- жилая площадь квартиры, кв.м.
+- kitsp	-- площадь кухни, кв.м.
+- dist -- расстояние от центра в км.
+- metrdist --	расстояние до метро в минутах
+- walk	1 -- пешком от метро,  0 -- на транспорте
+- floors	-- Число этажей в доме
+- Nfloor --	Номер этажа на котором расположена квартира
+- okrug: w -- квартира в ЗАО
+       se -- квартира в ЮВАО
+       s -- квартира в ЮАО
+- price_rub --	цена квартиры в рублях
+- price_m_rub --	цена кв. м. в рублях
+- zamkad --	1 -- квартира за МКАД, 0 -- нет
+
+
+# Описательный анализ данных
+
+## Описательные статистики
+
+```{r}
+glimpse(data_ag)
+#head(data_ag)
+#tail(data_ag)
+skim(data_ag)
+#summary(data_ag)
+```
+
+В базе 12 переменных, 2753 налюдения.
+
+Таблички пока ужасны, но я над этим работаю=)
+
+## Типы переменных
+
+Изначально в базе 11 текстобых переменных (типа "dbl"), 1 текстовая (переменная okrug имеет тип "chr").
+Однако для части переменных стоит перезадать тип и сделать их факторными. Это переменные *walk*, *zamkad* и *okrug*.
+Также исключим переменную  и цену на всю квартиру (так как это вспомогательная перемнная) *price_rub*.
+
+```{r}
+data_ag_fct = mutate_at(data_ag, vars(walk, zamkad, okrug), as.factor)
+data_ag_fct = select(data_ag_fct, -price_rub)
+#table(data_ag_fct$okrug, data_ag_fct$zamkad)
+data_ag_fct %>% group_by(okrug) %>% summarise(okr = mean(price_m_rub))
+
+ctable <- table(data_ag_fct$okrug, data_ag_fct$zamkad, dnn = c("Округ", "Внитри МКАД (0), За МКАД (1)"))
+mosaic(ctable, shade = TRUE, legend = TRUE)
+
+```
+
+
+Срежняя цена за квадратный метр выше в Западном округе. При этот только в Западном округе есть картиры, находящиеся за МКАД.
+
+
+## Графический анализ
+
+Изучим распределение наблюдений в выборке.
+
+```{r}
+ggplot(data = data_ag_fct, aes(x=price_m_rub)) +
+  geom_histogram() + theme_light() +
+  labs(x =TeX("Цена $м^2$ квартиры в рублях"), y = "Число наблюдений", title = TeX("Распределение наблюдений в выборке по цене за $м^2$"))
+```
+
+Построим на распределение наблюдений в терминах качественных переменных *walk*, *zamkad* и *okrug*.
+
+```{r}
+b1 = ggplot(data = data_ag_fct, aes(x = walk)) +
+  geom_bar() + theme_light() + 
+  labs(y = "Число наблюдений", title = "Пешком до метро (1) или на транспорте (0)")
+b2 = ggplot(data = data_ag_fct, aes(x = okrug)) +
+  geom_bar() + theme_light() + 
+  labs(y = "Число наблюдений", title = "Административный округ Москвы)")
+b3 = ggplot(data = data_ag_fct, aes(x = zamkad)) +
+  geom_bar() + theme_light() + 
+  labs(y = "Число наблюдений", title = "Внитри МКАД (0), за МКАД (1)")
+
+b1/b1/b3
+```
+
+
+```{r}
+ggplot(data = data_ag_fct) +
+  geom_violin(aes(x = metrdist, y = price_m_rub)) +
+  facet_grid(. ~ zamkad) + theme_light() +
+  labs(x = "Расстояние до метро в мин", y = TeX("Цена $м^2$ в рублях"), title = "Распределение цен квартир в зависимости от расстояния до метро в выборке по расположению - внитри МКАД (0), за МКАД (1)")
+```
+
+Квартиры за МКАД имеют значитально меньший разброс цен и их уровень, чем квартиры внутри МКАД. Также они находятся на меньшем расстоянии от метро. 
+
+
+Изучим илнейную взаимосвязь исследуемых признаков, построив матрицу парных корреляций для количественных переменных.
+Исключим факторные переменные и построим матрицу, затем визуализируем её.
+
+
+```{r}
+ag_cor <- cor(select(data_ag_fct, -walk, -okrug, -zamkad))
+#ag_cor
+#corrplot(ag_cor)
+corrplot(ag_cor, method = "square", type = "lower", title = "Матрица парных корреляций количественных признаков")
+```
+
+
+Цена за квадратный мер имеет самую сильную корреляцию с расстоянием до центра города *dist*, эта корреляция отрицательная.
+Также имеет место высокая положительная корреляция между характеристиками квартиры (например, общей площадью картиры, площадью кухни и жилой площадью).
+
+Построим диаграмму рассеяния в координатах расстояния до центра города и цены за квадратный метр (предварительно приведя цену к тысячам рублей за квадратный метр), оценим зависимость и наложим её на график.
+
+```{r}
+data_ag_fct = mutate(data_ag_fct, price_m_rub=price_m_rub/1000)
+ggplot(data = data_ag_fct, aes(x = dist, y = price_m_rub)) +
+  geom_point() + theme_gray() +  geom_smooth(method='lm') +
+  labs(x = "Расстояние до центра города в км", y = "Цена квадратного метра квартиры в 1000 рублей", title = "Зависимость цены квартиры от расстояния до центра города")
+```
+
+Далее с помощью диаграмм рассеяния изучим зависимость цены за квадратный метр от обзей площади квартиры, площади кухни и жилой площади.
+
+
+```{r}
+g1 = ggplot(data = data_ag_fct, aes(x = totsp, y = price_m_rub)) +
+  geom_point() + theme_gray() +  geom_smooth(method='lm') +
+  labs(x = TeX("Общая площадь квартиры в $м^2$"), y = TeX("Цена $м^2$ в 1000 рублей"))
+g2 = ggplot(data = data_ag_fct, aes(x = kitsp, y = price_m_rub)) +
+  geom_point() + theme_gray() +  geom_smooth(method='lm') +
+  labs(x = TeX("Площадь кухни в $м^2$"), y = TeX("Цена $м^2$ в 1000 рублей"))
+g3 = ggplot(data = data_ag_fct, aes(x = livesp, y = price_m_rub)) +
+  geom_point() + theme_gray() +  geom_smooth(method='lm') +
+  labs(x = TeX("Жилая квартиры в $м^2$"), y = TeX("Цена $м^2$ в 1000 рублей"))
+
+g1/(g2 + g3)
+```
+
+
+# Модель линейной регрессии
+
+Оценим линейную множественную регрессионную модель зависимости цены на квадратный метр квартиры от расстояния до центра, расстояния до метро, общей площади, жилой площади и пложади кухни, а также от факта расположения внутри или за МКАД.
+Рассмотрим отдельно доверительные интервала коэффициентов модели.
+
+
+```{r}
+r1 = lm(data = data_ag, price_m_rub ~ dist + metrdist + totsp + kitsp + livesp + zamkad)
+summary(r1)
+coefci(r1)
+plot_model(r1, ci.lvl = 0.95)
+```
+
+Регрессия значима, $R^2=0.28$. Значимы все коэффициенты, кроме двух - коэффициент при *totsp* и *livesp* статистически неотличимы от нуля.
+
+Проверим, можем ли мы исключить эти регрессоры.
+
+```{r}
+r2 = lm(data = data_ag, price_m_rub ~ dist + metrdist + kitsp + zamkad)
+summary(r2)
+
+waldtest(r1, r2)
+```
+
+Два упомянутых выше регрессора совместно значимы, исключить их из модели не можем. Возможная причина незначимости - мультиколлинеарность.
+
+```{r}
+VIF(r1)
+```
+
+Другое возможное свойство модели - гетероскедастичность. Переоченим модель с учетом этого.
+
+```{r}
+r1_rob <- lm_robust(data = data_ag, price_m_rub ~ dist + metrdist + totsp + kitsp + livesp + zamkad)
+summary(r1_rob)
+```
+
+Представим результаты трё оценённых моделей в единой таблице.
+
+
+```{r, results="asis"}
+htmlreg(list(r1, r2, r1_rob),
+        include.ci = FALSE,
+        star.symbol = "\\*")
+```
+
+*На этом пока всё=) С оформлением беда, но, надеюсь, я с этим разберусь*
+
+**Огромное спасибо за курс!**
